@@ -1,0 +1,190 @@
+---
+title: "BIOST537_HW4"
+author: "Qin Li"
+date: "2/26/2022"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = F, message = F)
+getwd()
+library(survival)
+library(flexsurv)
+library(foreign)
+library(numDeriv)
+library(tidyr)
+library(knitr)
+library(msm)
+library(KMsurv)
+```
+
+# 1.
+
+## a.
+
+The mean time until exit from maintenance is estimated to be 2.5% higher for patients who receive daily dosage, from a certain clinic and a certain history of incarceration, compared to patients who didn't receive daily dosage, at the same clinic and same history of incarceration. The estimated time ratio is 1.025 (95%CI: 1.016-1.034). 
+
+The mean time until exit from maintenance is estimated to be 103% higher for patients who at clinic 2, from patients who have a certain dosage condition and a certain history of incarceration, compared to patients from clinic 1, at the same dosage condition and history of incarceration. The estimated time ratio is 2.032 (95%CI: 0.627-1.007). 
+
+The mean time until exit from maintenance is estimated to be 20.5% lower for patients who had history of incarceration, from a certain dosage condition and a certain clinic, compared to patients who didn't have history of incarceration, at the same dosage condition and same clinic. The estimated time ratio is 0.795 (95%CI: 0.627-1.007). 
+
+The results from cox model are largely agree with the results from aft weibull model. In general, the patients with higher dosage are associated with lower hazard of exit from maintenance compared to lower dosage; patients at clinic 2 is associated with a smaller hazard of exit compared to clinic 1; patients with history of incarceration is associated with higher hazard of exit compared to patients without history of incarceration. 
+
+
+If we we a generalized gamma baseline distribution instead, the dose decreased by 0.7%, and clinic decreased by 0.09% and prison increased by 3.1%. 
+
+```{r q1a}
+meth <- read.csv("methadone-1.csv",header = TRUE)
+meth$clinic2 <- as.numeric(meth$clinic == 2)
+meth <- meth[,-c(2)]
+s.meth <- with(meth, Surv(time, event))
+sfit.meth = survfit(s.meth~1, conf.type = "log-log")
+
+aft.weibull <- flexsurvreg(s.meth~dose+clinic2+prison, 
+                           data = meth, dist = "weibull")
+aft.weibull
+
+mod.cox <- coxph(s.meth~dose+clinic2+prison, data = meth)
+
+summary(mod.cox)
+
+aft.gengamma <- flexsurvreg(s.meth~dose+clinic2+prison, 
+                           data = meth, dist = "gengamma")
+
+aft.gengamma
+```
+
+
+## b. 
+
+The estimated time ratio is 0.590 (95%CI: 0.200-0.981). 
+
+The estimated median time until exit from maintenance is 509.0 (95%CI: 334.4-683.6) days. 
+
+The estimated median time until exit from maintenance for someone from clinic 1 with history of incarceration of a dosage of 100mg/day is 862.2 (95%CI: 510.9-1213.4) days. 
+
+```{r q1b}
+diff.est <- exp(-60*coef(aft.weibull)['dose'] - coef(aft.weibull)['prison']+
+                  coef(aft.weibull)['clinic2'])
+
+diff.se <- deltamethod(g = ~exp(-60*x1-x2+x3),
+                       mean = coef(aft.weibull)[c("dose","prison","clinic2")],
+                       cov = vcov(aft.weibull)[c("dose","prison","clinic2"),
+                                              c("dose","prison","clinic2")])
+as.numeric(diff.est)
+diff.est+c(-1,1)*1.96*diff.se
+
+
+med.est <- exp(40*coef(aft.weibull)["dose"]+
+                 coef(aft.weibull)["clinic2"])*log(2)^
+  (1/exp(coef(aft.weibull)["shape"]))*
+  exp(coef(aft.weibull)['scale'])
+med.se = deltamethod(g = ~exp(40*x1+x2)*log(2)^(1/exp(x3))*exp(x4),
+                     mean = coef(aft.weibull)[c("dose","clinic2","shape","scale")],
+                     cov = vcov(aft.weibull)[c("dose","clinic2","shape","scale"),
+                                             c("dose","clinic2","shape","scale")],
+                     se = TRUE)
+
+as.numeric(med.est)
+med.est + c(-1,1)*1.96*med.se
+
+med.est2 <- exp(100*coef(aft.weibull)["dose"]+coef(aft.weibull)["prison"])*
+       log(2)^(1/exp(coef(aft.weibull)["shape"]))*exp(coef(aft.weibull)["scale"])
+
+med.se2 <- deltamethod(g=~exp(100*x1+x2)*log(2)^(1/exp(x3))*exp(x4),
+                  mean=coef(aft.weibull)[c("dose","prison","shape","scale")],
+                  cov=vcov(aft.weibull)[c("dose","prison","shape","scale"),
+                                        c("dose","prison","shape","scale")],
+ses=TRUE)
+
+
+as.numeric(med.est2)
+med.est2 + c(-1,1)*1.96*med.se2
+
+```
+
+
+## c.
+
+The time ratio is 1.507 (95%CI: 1.079-1.935) comparing, among patients with a history of previous incarceration and from the same clinic, patients administered 80mg/day to patients administered 60mg/day. 
+
+The time ratio is 1.712 (95%CI: 1.321-2.104) comparing, among patients without a history of previous incarceration and from the same clinic, patients administered 80mg/day to patients administered 60mg/day. 
+
+They do not significantly differ from one another, with p value equals to 0.491. 
+
+```{r q1c}
+
+aft.weibull2 <- flexsurvreg(s.meth~dose+prison+clinic2+dose*prison,
+                              data=meth, dist="weibull")
+aft.weibull2
+
+est.c <- exp(20*coef(aft.weibull2)["dose"]+20*coef(aft.weibull2)["dose:prison"])
+se.c <- deltamethod(g=~exp(20*x1+20*x2),
+                 mean=coef(aft.weibull2)[c("dose","dose:prison")],
+                 cov=vcov(aft.weibull2)[c("dose","dose:prison"),
+                                        c("dose","dose:prison")])
+
+as.numeric(est.c)
+
+est.c+c(-1,1)*1.96*se.c
+
+est.c2 <- exp(20*coef(aft.weibull2)["dose"])
+se.c2 <- deltamethod(g = ~exp(20*x1),
+                     mean = coef(aft.weibull2)["dose"],
+                     cov = vcov(aft.weibull2)["dose","dose"])
+as.numeric(est.c2)
+
+est.c2+c(-1,1)*1.96*se.c2
+
+p_val = 2*(1-pnorm(abs(-0.00638)/0.00926))
+p_val
+```
+
+# 2.
+
+## a.
+
+The median age is 24.4 (95%CI: 20.5, 26.5) at blindness due to diabetic retinopathym accounted for delayed entry. 
+
+The median age is 44.5 (95%CI: 40.8-48.2) at blindness due to diabetic retinopathym ignoring the delayed entry. 
+
+
+```{r q2a}
+library(tidyr)
+diabetes <- read.csv("diabetes.csv")
+untreat <- diabetes[diabetes$treat == 0,]
+untreat$blind <- untreat$age+untreat$time/12
+
+s.untreat <- with(untreat, Surv(age, blind, status))
+sfit.untreat <- survfit(s.untreat~1,conf.type = "log-log")
+plot(sfit.untreat,conf.int = FALSE, xlab = "Age at blindness",
+     ylab = "Survival prob.",
+     main = "Delay entry at age")
+abline(h = 0.5, lty = "dashed",col = "blue")
+sfit.untreat
+
+s.untreat2 <- with(untreat, Surv(blind, status))
+sfit.untreat2 <- survfit(s.untreat2~1, conf.type = "log-log")
+plot(sfit.untreat2,conf.int = FALSE, xlab = "Age at blindness",
+     ylab = "Survival prob.",
+     main = "Ignore Delay entry at age")
+abline(h = 0.5, lty = "dashed",col = "blue")
+sfit.untreat2
+
+
+```
+
+## b.
+
+The median age accounted and ignoring the delayed age differ by a lot. I think delayed entry must be accounted for. 
+
+From the survival curve, most of the patients experienced blindness between 20-30.
+ 
+The truncated time is the age of diagnosis, but the survival time of interest is the age of blindness, the two variables should be highly associated, and not considered as independent. 
+
+
+
+
+
+
+

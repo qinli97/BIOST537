@@ -1,0 +1,265 @@
+---
+title: "BIOST537_HW2"
+author: "Qin Li"
+date: "1/29/2022"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = F, message = F)
+getwd()
+library(survival)
+library(flexsurv)
+library(foreign)
+source("fitparametric.R")
+source("getmedianres.R")
+library(numDeriv)
+library(tidyr)
+library(knitr)
+```
+
+# 1. 
+
+## a). 
+
+```{r Q1a, out.width = "80%", fig.align = "center", echo = FALSE}
+knitr::include_graphics("hw2_q1a1.png") 
+knitr::include_graphics("hw2_q1a2.png") 
+```
+
+
+## b). 
+
+Based on the table above, the estimated probability that no relapse in the maintenance group is 0.432 by 36 months; the estimated probability that no relapse in the control group is 0.303 by 36 months. 
+
+# 2. 
+
+## a). 
+
+The estimated probability that no exit will occur by one year is 0.606 (95%CI: 0.538-0.667). 
+
+```{r Q2a, echo=T}
+########## a
+addicts <- read.csv("addicts.csv",header = TRUE)
+s.add <- with(addicts, Surv(time,event))
+km.add <- survfit(s.add~1, data = addicts, conf.type = "log-log")
+plot(km.add, main ="Kaplan-Meier survivor estimates",
+     ylab = "Survival probability",xlab = "Time (in days)", cex = 1.5)
+
+# summary(km.add, times = 365)
+
+
+```
+
+## b). 
+
+We started by finding the time that first appear a confidence interval that contains 0.5, and look through the last time that contains 0.5. which leads us to day 394 and day 546. The estimated median time to exit is 504 days (95%CI: 394-550). The S(t) could happen anytime between 394 and 546, so we should use 550 instead of 546 days at the end of 95% CI. We get the same results from two approaches. 
+
+```{r Q2b, echo=T}
+################# b
+kable(summary(km.add)$table)
+```
+
+
+## c). 
+
+### i). 
+
+The plot is shown as follows
+
+```{r Q2c1, echo = T}
+################ c1
+km.add.incar <- survfit(s.add~prison, data = addicts, conf.type = "log-log")
+plot(km.add.incar, col = c("blue","orange"), lwd = 2, 
+     xlab = "analysis time",main = "Kaplan-Meier survival estimates")
+legend("topright",c("no prison","prison"), col=c("blue","orange"),
+       lwd = c(2,2), cex = 1.2)
+
+```
+
+### ii).
+
+The probability of no exit occurred by 8 months in no prison group is 0.763 (95%CI:0.678-0.829), with standard error of 0.0384; whereas the probability of no exit occurred by 8 months in prison group is 0.655 (95%CI: 0.544-0.739), with a standard error of 0.0475. After the calculation, we've got a p-value at 0.08. Thus, we fail to reject the null that there are significant difference between the two groups. 
+
+```{r Q2c2, echo = T}
+
+############# c2
+s.add.noprison <- with(subset(addicts, prison == 0), Surv(time, event))
+sfit.add.noprison <- survfit(s.add.noprison~1, conf.type = "log-log")
+summary(sfit.add.noprison, times = 240)
+s.add.prison <- with(subset(addicts, prison == 1), Surv(time, event))
+sfit.add.prison <- survfit(s.add.prison~1, conf.type = "log-log")
+summary(sfit.add.prison, times = 240)
+
+add.sterr <- sqrt(0.0384^2+0.0475^2)
+add.est <- 0.763-0.655
+# add.est/add.sterr 
+p_val_prison <- 2*pnorm(-abs(add.est/add.sterr ))
+p_val_prison
+
+```
+
+### iii).
+
+Based on the logrank test, the distribution of time until exit from maintenance does no differs significantly by history of incarceration (p=0.3).  
+
+```{r Q2c3, echo = T}
+
+logrank.prison <- survdiff(s.add~prison, data = addicts)
+
+
+```
+
+
+### iv).
+Based on the Wilcoxon-Gehan-Breslow test, the distribution of time until exit from mainte- nance does not differ significantly by history of incarceration with a p-value at 0.11. 
+```{r Q2c4, echo = T}
+################### c4
+library(survMisc)
+
+wgb_test <- comp(ten(km.add.incar))$tests
+p_val_wgb <- 2*(1-pnorm(1.59962))
+p_val_wgb
+```
+
+
+
+### v).
+
+The Wilcoxon-Gehan-Breslow test statistics is 1.6^2 = 2.56, which is much greater than the log-rank test. This may inform us that the Wilcoxon-Gehan-Breslow test emphasize on the early times of the harzard. 
+
+```{r Q2c5, echo = T}
+############### c5
+
+plot(km.add.incar, fun = "cumhaz",col = c("blue","orange"), lwd = 2,
+     ylab = "Cumulative Hazard", main = "Nelson-Aalen cumulative hazard estimates")
+legend("bottomright", c("no-prison", "prison"), col = c("blue",
+    "orange"), lwd = c(2, 2), cex = 1.2, bty = "n")
+```
+
+
+## d.
+
+### i).
+
+The plot is shown as follows:
+
+```{r Q2d1, echo = T}
+############## d1
+addicts$meth <- ifelse(addicts$dose>60,1,0)
+km.add.meth <- survfit(s.add~meth, data = addicts, conf.type = "log-log")
+plot(km.add.meth, col = c("blue","orange"), lwd = 2, 
+     xlab = "analysis time",main = "Kaplan-Meier survival estimates")
+legend("topright",c("dose<= 60mg","dose >60mg"), col=c("blue","orange"),
+       lwd = c(2,2), cex = 1.2)
+```
+
+### ii).
+
+The probability of no exit occurred by 8 months in no dose group is 0.616 (95%CI:0.527,0.693), with standard error of 0.0425; whereas the probability of no exit occurred by 8 months in prison group is 0.858 (95%CI: 0.768,0.915), with a standard error of 0.0475. After the calculation, we've got a standard test statistics of -4.3. With the calculated p-value at 1.56e-05, we can reject the null that there are no difference in two groups. 
+
+
+```{r Q2d2, echo = T}
+############# d2
+s.add.nodose <- with(subset(addicts, meth == 0), Surv(time, event))
+sfit.add.nodose <- survfit(s.add.nodose~1, conf.type = "log-log")
+sum_240 <- summary(sfit.add.nodose, times = 240)
+s.add.dose <- with(subset(addicts, meth == 1), Surv(time, event))
+sfit.add.dose <- survfit(s.add.dose~1, conf.type = "log-log")
+summary(sfit.add.dose, times = 240)
+
+dose.add.sterr <- sqrt(0.0425^2+0.0365^2)
+dose.add.est <- 0.616-0.858
+# dose.add.est/dose.add.sterr 
+
+p_val.dose <- 2*pnorm(-abs(dose.add.est/dose.add.sterr ))
+p_val.dose
+```
+### iii).
+
+
+
+Based on the logrank test, the distribution of time until exit from maintenance differs significantly by history of incarceration (p=3e-07).  
+
+```{r Q2d3, echo = T}
+########## d3
+logrank_meth <- survdiff(s.add~meth, data = addicts)
+
+
+```
+
+
+
+### iv).
+Based on the Wilcoxon-Gehan-Breslow test, the distribution of time until exit from maintenance differ significantly by history of incarceration with a p-value at 3.65e-07. 
+
+```{r Q2d4, echo = T}
+########## d4
+library(survMisc)
+
+wgb_mth <- comp(ten(km.add.meth))$tests
+p_val_meth <- 2*(1-pnorm(4.9534))
+p_val_meth
+```
+
+### v).
+
+The Wilcoxon-Gehan-Breslow test statistics is (4.9534)^2 = 24.54, which smaller than log-rank test (26.5). This may inform us that the log-rank test emphasize on the later times of the harzard estimates. 
+
+```{r Q2d5,echo = T}
+############## d5
+plot(km.add.meth, fun = "cumhaz",col = c("blue","orange"), lwd = 2,
+     ylab = "Cumulative Hazard", main = "Nelson-Aalen cumulative hazard estimates")
+legend("bottomright", c("no-dose", "dose"), col = c("blue",
+    "orange"), lwd = c(2, 2), cex = 1.2, bty = "n")
+```
+
+## e). 
+
+Based on a stratified logrank test, the survival funtion of time until exit from maintenance differ significantly by history of previous incarceration adjusting for clinic membership (p =0.04), so we could reject our null hypothesis that in each clinic the time until exit from maintenance is the same with or without the history of previous incarceration. And the alternative hypothesis is that at lease one clinic has the survival function of time until exit from maintenance differs between patients with and without previous incarceration. 
+
+And the null hypothesis in a standard logrank test is that the survial function time until exit from maintenance are the same for patient with or without history of previous incarceration; and the alternative is that the survival function of time until exit from maintenance is different between patient with and without history of previous incarceration. 
+
+
+
+```{r Q2e,, echo = T}
+########### 2e
+logrank_strata <- survdiff(s.add~prison + strata(clinic), data = addicts)
+
+```
+
+
+## f).
+
+The estimated median residual time until exit from maintenance at 4 month is 420 dats using the Kaplan-Meier estimator, and we got the same answer using getmedianres function, the estimated median time is 420 (95%CI: 376-526)
+
+The estimated median residual time until exit from maintenance at 8 month is 427 dats using the Kaplan-Meier estimator, and we got the same answer using getmedianres function, the estimated median time is 427 (95%CI: 341-515). 
+
+The estimated median residual time until exit from maintenance at 12 month is 389 dats using the Kaplan-Meier estimator, and we got the same answer using getmedianres function, the estimated median time is 427 (95%CI: 301-461). 
+
+```{r Qf, echo = T}
+########## f
+hal.4mon = 0.5*summary(km.add,times = 120)$surv
+min(km.add$time[km.add$surv <= hal.4mon]) - 120
+
+getmedianres_4mon = getmedianres(s.add,times = 120,confint=TRUE)
+  
+hal.8mon = 0.5*summary(km.add,times = 240)$surv
+min(km.add$time[km.add$surv <= hal.8mon]) - 240
+getmedianres_8mon = getmedianres(s.add,times = 240,confint=TRUE)
+
+hal.12mon = 0.5*summary(km.add,times = 360)$surv
+min(km.add$time[km.add$surv <= hal.12mon]) - 360
+getmedianres_12mon = getmedianres(s.add,times = 360,confint=TRUE)
+
+
+
+```
+
+## Appendix
+```{r ref.label=knitr::all_labels(), echo=TRUE, eval=FALSE}
+```
+
+
+
+

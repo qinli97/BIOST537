@@ -1,0 +1,161 @@
+---
+title: "biost537_project"
+author: "Qin Li"
+date: "3/12/2022"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = F, message = F)
+getwd()
+library(survival)
+library(flexsurv)
+library(foreign)
+library(tidyr)
+library(knitr)
+library(msm)
+library(KMsurv)
+library(table1)
+```
+
+
+
+```{r}
+bmt <- read.csv("bmt.csv",header = TRUE)
+
+### q1
+s.bmt <- with(bmt, Surv(tdfs,deltadfs))
+sfit.bmt <- survfit(s.bmt~1, conf.type = "log-log")
+summary(sfit.bmt)
+plot(sfit.bmt, data = bmt, main = "disease free survival time",
+     ylab = "Survivor Function",xlab = "Time (days)")
+
+## q2
+bmt$disgroup <- factor(bmt$disgroup, levels = c(1,2,3), 
+                       labels = c("acute lymphoblastic leukemia",
+                                  "AML low risk","AML high risk"))
+bmt$male <- factor(bmt$male,levels = c(0,1), labels = c("female","male"))
+bmt$cmv <- factor(bmt$cmv, levels = c(0,1), labels = c("negative","positive"))
+bmt$donormale <- factor(bmt$donormale,levels = c(0,1), labels = c("female","male"))
+bmt$donorcmv <- factor(bmt$donorcmv, levels = c(0,1),labels = c("negative","positive"))
+bmt$fab <- factor(bmt$fab, levels = c(0,1), labels = c("other","fab grade 4 or 5 and AML"))
+bmt$hospital <- factor(bmt$hospital, levels = c(1,2,3,4), 
+                       labels = c("OH","Melbourn","Sydney","PA"))
+bmt$mtx <- factor(bmt$mtx, levels = c(0,1),labels = c("no","yes"))
+
+table1(~age+male+cmv+donorage+donormale+donorcmv+waittime+mtx|disgroup,data=bmt)
+table1(~age+male+cmv+donorage+donormale+donorcmv+waittime+mtx|fab,data=bmt)
+
+
+## q3 
+cox.age <- coxph(s.bmt~age, data = bmt)
+summary(cox.age)
+cox.male <- coxph(s.bmt~male, data = bmt)
+summary(cox.male)
+cox.cmv <- coxph(s.bmt~cmv, data = bmt)
+summary(cox.cmv)
+cox.donorage <- coxph(s.bmt~donorage, data = bmt)
+summary(cox.donorage)
+cox.donormale <- coxph(s.bmt~donormale, data = bmt)
+summary(cox.donormale)
+cox.donorcmv <- coxph(s.bmt~donorcmv, data = bmt)
+summary(cox.donorcmv)
+cox.waittime <- coxph(s.bmt~waittime, data = bmt)
+summary(cox.waittime)
+cox.fab <- coxph(s.bmt~fab, data = bmt)
+summary(cox.fab)
+cox.mtx <- coxph(s.bmt~mtx, data = bmt)
+summary(cox.mtx)
+
+
+## q4 
+
+## include time-varying covariate derived from deltadfs
+bmt.tvc<-tmerge(data1=bmt,
+                   data2=bmt,
+                   id=id,
+                   deltadfs=event(tdfs,deltadfs),
+                   deltar=event(tdfs,deltar),
+                   postagvhd=tdc(ta))
+head(bmt.tvc)
+## disease-free survival
+s.bmt.dfs<-with(bmt.tvc,Surv(tstart,tstop,deltadfs))
+
+## relapse
+s.bmt.r<-with(bmt.tvc,Surv(tstart,tstop,deltar))
+
+# occurrence of aGVHD after transplantation and disease free survival
+cox.agvhd.dfs <- coxph(s.bmt.dfs~postagvhd+fab,data=bmt.tvc)
+summary(cox.agvhd.dfs)
+#occurrence of aGVHD and relapse
+cox.agvhd.r <- coxph(s.bmt.r~postagvhd+fab,data=bmt.tvc)
+summary(cox.agvhd.r)
+
+
+## q5
+bmt_agvhd <- subset(bmt, deltaa == 1)
+
+s.agvhd <- with(bmt_agvhd, Surv(tdfs,deltadfs))
+
+cox.agvhd.age <- coxph(s.agvhd~age, data = bmt_agvhd)
+summary(cox.agvhd.age)
+cox.agvhd.male <- coxph(s.agvhd~male, data = bmt_agvhd)
+summary(cox.agvhd.male)
+cox.agvhd.cmv <- coxph(s.agvhd~cmv, data = bmt_agvhd)
+summary(cox.agvhd.cmv)
+cox.agvhd.donorage <- coxph(s.agvhd~donorage, data = bmt_agvhd)
+summary(cox.agvhd.donorage)
+cox.agvhd.donormale <- coxph(s.agvhd~donormale, data = bmt_agvhd)
+summary(cox.agvhd.donormale)
+cox.agvhd.donorcmv <- coxph(s.agvhd~donorcmv, data = bmt_agvhd)
+summary(cox.agvhd.donorcmv)
+cox.agvhd.waittime <- coxph(s.agvhd~waittime, data = bmt_agvhd)
+summary(cox.agvhd.waittime)
+cox.agvhd.fab <- coxph(s.agvhd~fab, data = bmt_agvhd)
+summary(cox.agvhd.fab)
+cox.agvhd.mtx <- coxph(s.agvhd~mtx, data = bmt_agvhd)
+summary(cox.agvhd.mtx)
+
+
+## q6
+
+s.mtx <- with(bmt, Surv(ta,deltaa))
+## not sure what to adjust for
+
+cox.adj.mtx <- coxph(s.mtx~mtx+age+male+donormale+
+                       donorage+cmv+fab, data = bmt)
+
+summary(cox.adj.mtx)
+
+sfit.dis <- survfit(s.mtx~disgroup, data = bmt)
+plot(sfit.dis, cumhaz= TRUE)
+
+
+
+cox.unadj.mtx <- coxph(s.mtx~mtx, data = bmt)
+summary(cox.unadj.mtx)
+
+
+
+
+## q7
+bmt.tp<-tmerge(data1=bmt,
+                   data2=bmt,
+                   id=id,
+                   deltadfs=event(tdfs,deltadfs),
+                   deltar=event(tdfs,deltar),
+                   posttp=tdc(tp))
+
+head(bmt.tp)
+s.tp.dfs<-with(bmt.tp,Surv(tstart,tstop,deltadfs))
+s.tp.r<-with(bmt.tp,Surv(tstart,tstop,deltar))
+
+# occurrence of aGVHD after transplantation and disease free survival
+cox.tp.dfs <- coxph(s.tp.dfs~posttp+fab,data=bmt.tp)
+summary(cox.tp.dfs)
+#occurrence of aGVHD and relapse
+cox.tp.r <- coxph(s.tp.r~posttp+fab,data=bmt.tp)
+summary(cox.tp.r)
+
+```
+

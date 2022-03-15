@@ -1,0 +1,184 @@
+---
+title: "BIOST537_HW3"
+author: "Qin Li"
+date: "2/11/2022"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = F, message = F)
+getwd()
+library(survival)
+library(flexsurv)
+library(foreign)
+source("fitparametric.R")
+source("getmedianres.R")
+library(numDeriv)
+library(tidyr)
+library(knitr)
+library(msm)
+```
+
+# 1.
+
+## a. 
+
+The estimated hazard of relapse in treatment group is 26.2% lesser than the non-treatment group. The hazard ratio is 0.738 (95%CI: 0.55-0.992) for treatment, and the p-value is 0.044. We could reject the null hypothesis that the hazard with or without treatment is the same in relapse time. 
+
+```{r q1a}
+ccg <- read.csv('ccg803.csv')
+s.ccg <- with(ccg, Surv(duration, relapse))
+ccg.coxph <- coxph(s.ccg~rx, data = ccg)
+sfit.ccg <- survfit(s.ccg~1, data = ccg, conf.type = "log-log")
+summary(ccg.coxph)
+```
+
+
+## b.
+
+The estimated hazard of relapse in treatment group is 25.6% lesser than the non-treatment group, adjusting for white blood cell count and age. The hazard ratio is 0.744 (95%CI: 0.553-0.999) for treatment, and the p-value is 0.049. We could reject the null hypothesis, and the association is significant. 
+
+The estimated hazard of relapse for 1 unit higher of white blood cell count is 0.04% greater than 1 unit lower, for someone of the same treatment and age. The hazard ratio is 1.0004 (95%CI: 1.0002-1.000), with p-value of 2.73e-08. We could reject the null that the hazard with one unit difference in white blood cell count is the same, adjusting for treatment and age. 
+
+The estimated hazard of relapse for differing by 1 age is 0.5% higher for older people, for someone at the same treatment group and age. The hazard ratio is 1.005 (95%CI: 0.961-1.051), with p value of 0.843. We fail to reject the null that the hazard in different age is the same, adjusting for treatment and wbc. 
+
+```{r q1b}
+ccg.coxph.adj <- coxph(s.ccg~rx+wbc+age, data = ccg)
+summary(ccg.coxph.adj)
+
+```
+
+## c.
+
+The estimated hazard of relapse is 22.5% lower in treatment group to non-treatment group that are both with low white blood cell count and at same age. The hazard ratio is 0.775 (95%CI: 0.481-1.25). With p = 0.294, we failed to reject the null. The association is not significant. 
+
+The estimated hazard of relapse is 18.5% lower in treatment group to non-treat group that are both in high white blood cell count and at same age. The hazard ratio is 0.875 (95%CI: 0.658-0.972). 
+
+The estimated hazard of relapse is 113% higher in 1 unit higher in people with high white blood than 1 unit lower, that are both in non-treatment group and same age. The hazard ratio is 2.131 (95%CI: 1.34-3.38). 
+
+To test of the hypothesis that this association does not differ in these subpopulations, we peformed a anova test. With p value of 0.87, we fail to reject our null hypothesis. 
+
+```{r q1c}
+ccg$wbc_high <- ifelse(ccg$wbc >=100, 1,0)
+ccg.coxph.adj2 <- coxph(s.ccg~rx+rx*wbc_high+age, data = ccg)
+summary(ccg.coxph.adj2)
+
+inter.est <- exp(coef(ccg.coxph.adj2)["rx"] + coef(ccg.coxph.adj2)["rx:wbc_high"])
+inter.se <- deltamethod(g = ~exp(x1+x2),
+                        mean = coef(ccg.coxph.adj2)[c("rx","rx:wbc_high")],
+                        cov = vcov(ccg.coxph.adj2)[c("rx","rx:wbc_high"),
+                                                   c("rx","rx:wbc_high")])
+
+inter.est + c(-1,1)*inter.se
+
+ccg.coxph.adj3 <- coxph(s.ccg~rx+wbc_high+age, data = ccg)
+anov.test <- anova(ccg.coxph.adj2,ccg.coxph.adj3)
+
+anov.test$`P(>|Chi|)`[2]
+```
+
+
+## d.
+
+The estimated hazard of relapse is 29% lower for people in the treatment group than people who are not in the treatment group, with the same white blood cell count and age. The hazard ratio is 0.71 (95%ci: 0.520-0.969), with p = 0.031, we could reject the null that the association is significant. 
+
+The estimated hazard of relapse is 0.03% greater in people with 1 unit higher white blood cell for people at the same treatment group and same age. The hazard ratio is 1.0003 (95%CI: 1.0001,1.0004), with p = 0.001, we could reject the null that association is significant. 
+
+The estimated hazard of relapse is 0.004 lower in people that are one year older for people at the same treatment group and same level of white blood cell count. The hazard ratio is 0.996 (95%CI: 0.949-1.045), with p = 0.865, we failed to reject the null that there're no association between risk of relapse and age. 
+
+```{r q1d}
+options(digits=6)
+ccg.coxph.adj4 <- coxph(s.ccg~rx+wbc+age+strata(institution), data = ccg)
+summary(ccg.coxph.adj4)
+
+
+```
+
+
+## e.
+
+
+```{r q1e}
+p1 <- data.frame(age = 5, wbc = 40,rx = 1)
+p2 <- data.frame(age = 5, wbc = 40,rx = 0)
+p3 <- data.frame(age = 5, wbc = 200,rx = 1)
+p4 <- data.frame(age = 5, wbc = 200,rx = 0)
+
+plot(survfit(ccg.coxph.adj,newdata = p1),col = "blue",
+     xlab = "Time until relapse", ylab = "Survivial Prob.",conf.int = FALSE)
+lines(survfit(ccg.coxph.adj, newdata = p2), col = "blue",lty = "dashed",conf.int = FALSE)
+lines(survfit(ccg.coxph.adj, newdata = p3), col = "orange",lty = "solid",conf.int = FALSE)
+lines(survfit(ccg.coxph.adj, newdata = p4), col = "orange",lty = "dashed",conf.int = FALSE)
+legend("topright", legend = c("trt & wbc = 40","cl & wbc = 40",
+                              "trt & wbc = 200","cl & wbc = 200"),
+       col = c("blue","blue","orange","orange"), 
+       lty = c("solid","dashed","solid","dashed"))
+
+
+```
+
+# 2
+
+## a.
+
+The estimated hazard of exit from maintenance is 3.5% smaller in patients who receive one less unit of dosage, for whom are both have history of incarceration and clinic. The hazard ratio is 0.965 (95%CI: 0.953,0.977), with p = 2.9e-08, we can reject the null that there're no association between risk of exit from maintenance and dose. 
+
+The estimated hazard of exit from maintenance is 38.6% greater in patients who have history of incarceration than no history of it, for whom are receive same doseage and at the same clinic. The hazard ratio is 1.386 (95%CI: 0.999,1.924), with p = 0.051, we failed to reject the null that there're no association between risk of exit from maintenance and history in incarceration. 
+
+The estimated hazard of exit from maintenance is 63.6% smaller in patients in clinic 2 compare to patients in clinic 1, for whom are both have history of incarceration and same dosage. The hazard ratio is 0.364 (95%CI: 0.239,0.555), with p = 2.6e-06, we can reject the null that there're no association between risk of exit from maintenance and clinic. 
+
+
+```{r Q2a}
+meth <- read.csv("methadone-1.csv",header = TRUE)
+
+s.meth <- with(meth, Surv(time,event))
+sfit.meth <- survfit(s.meth~1, data = meth, conf.type = "log-log")
+
+meth.cox <- coxph(s.meth~dose+prison+clinic, data = meth)
+summary(meth.cox)
+```
+
+## b.
+
+The estimated hazard of exit from maintenance is 3.5% smaller in patients who receive one less unit of dosage in a given clinic, for whom are both have history of incarceration and at same clinic. The hazard ratio is 0.965 (95%CI: 0.953,0.978), with p = 5.6e-08, we can reject the null that there's no association between risk of exit from maintenance and dose.
+
+The estimated hazard of exit from maintenance is 47.6% greater for whose does have history of incarceration than patients who do not have history of incarceration in a given clinic, for those that receive same dosage and at same clinic. The hazard ratio is 1.476 (95%CI: 1.060,2.056), with p = 0.021, we can reject the null that there's no aasociation between risk of exit from maintenance and history of incarceration. 
+
+The interpretation of hazard ratios does not change relative to the model in a. But stratification on clinic is more flexible, since we do not assume the proportional hazard across the clinic.  
+
+
+```{r q2b}
+meth.cox2 <- coxph(s.meth~dose+prison+strata(clinic), data = meth)
+summary(meth.cox2)
+
+```
+
+
+
+## c.
+
+Comparing patients at a certain level of dosage with a history of incarceration in a given clinic to a patient with a history of incarceration in the same clinic but with 1 unit of dosage less, the hazard ratio is estimated to be 1% greater compare to the patients at a certain level of dosage that do no have the history of incarceration in the same clinic but with 1 unit of dosage less. The estimated hazard ratio is 1.010 (95%CI: 0.985, 1.036), with p = 0.44, we failed to reject the null, the difference between thses hazard ratios is not significant. 
+
+The estimated hazard ratio is 0.178 (95%CI: 0.051- 0.619) comparing patients from a given clinic with a history of incarceration receiving 120 mg/day of methadone to patients from the same clinic without a history of incarceration receiving 50 mg/day of methadone.
+```{r q2c}
+meth.cox3 <- coxph(s.meth~dose*prison + strata(clinic), data = meth)
+summary(meth.cox3)
+
+hr = 70*coef(meth.cox3)["dose"] + 1*coef(meth.cox3)["prison"]+ 
+  120*coef(meth.cox3)["dose:prison"] 
+se.hr = deltamethod(g = ~(70*x1+x2+120*x3),
+                    mean = coef(meth.cox3)[c("dose","prison","dose:prison")],
+                    cov = vcov(meth.cox3)[c("dose","prison","dose:prison"),
+                                          c("dose","prison","dose:prison")])
+
+exp(hr)
+exp(hr +c(-1,1)*1.96*se.hr)
+```
+
+
+
+
+
+
+
+
